@@ -1,4 +1,4 @@
-"""SQLite 数据库管理"""
+"""SQLite 数据库管理 — Phase 3"""
 
 import aiosqlite
 from pathlib import Path
@@ -35,6 +35,18 @@ CREATE TABLE IF NOT EXISTS chat_history (
     content TEXT NOT NULL,
     timestamp TEXT NOT NULL,
     FOREIGN KEY (account_id) REFERENCES accounts(id)
+);
+
+CREATE TABLE IF NOT EXISTS workflow_runs (
+    id TEXT PRIMARY KEY,
+    workflow_id TEXT NOT NULL,
+    status TEXT NOT NULL,
+    input TEXT,
+    output TEXT,
+    logs TEXT,
+    started_at TEXT NOT NULL,
+    finished_at TEXT,
+    FOREIGN KEY (workflow_id) REFERENCES workflows(id)
 );
 """
 
