@@ -1,0 +1,17 @@
+# AI Cockpit 配置文件
+
+server:
+  host: "0.0.0.0"
+  port: 8080
+  auth_token: "sk-dev-token"
+
+browser:
+  max_concurrent: 5
+  screenshot_fps: 1
+  screenshot_quality: 40
+  default_timeout: 30000
+  headless: false
+
+accounts: []
+
+workflows: []

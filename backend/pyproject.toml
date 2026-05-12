@@ -1,0 +1,27 @@
+[project]
+name = "ai-cockpit"
+version = "0.1.0"
+description = "多平台网页 AI 协同指挥台"
+requires-python = ">=3.10"
+dependencies = [
+    "camoufox[playwright]",
+    "fastapi",
+    "uvicorn[standard]",
+    "aiosqlite",
+    "pydantic-settings",
+    "loguru",
+    "pyyaml",
+    "python-multipart",
+    "jinja2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "httpx",
+]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.backends._legacy:_Backend"
