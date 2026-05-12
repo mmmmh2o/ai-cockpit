@@ -1,13 +1,15 @@
-"""实例控制 API"""
+"""实例控制 API — Phase 2 增强版"""
 
 import json
+import asyncio
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from loguru import logger
 
 from app.browser.pool import browser_pool
 from app.database import get_db
-from app.models import ChatRequest
+from app.models import ChatRequest, ChatMessage
+from datetime import datetime
 
 router = APIRouter(prefix="/api/instances", tags=["instances"])
 
@@ -57,6 +59,33 @@ async def stop_instance(account_id: str):
     return {"message": "已停止"}
 
 
+@router.post("/{account_id}/login")
+async def trigger_login(account_id: str):
+    """触发登录流程（等待用户手动登录）"""
+    instance = browser_pool.get(account_id)
+    if not instance:
+        raise HTTPException(status_code=404, detail="实例不存在")
+
+    if instance.status.value != "logged_out":
+        return {"message": f"当前状态 {instance.status.value}，无需登录"}
+
+    # 异步等待登录，返回立即响应
+    asyncio.create_task(_wait_login(instance))
+    return {"message": "登录流程已启动，请在浏览器窗口中完成登录"}
+
+
+async def _wait_login(instance):
+    """后台等待登录完成"""
+    try:
+        success = await instance.wait_for_login(timeout=300000)
+        if success:
+            logger.info(f"[{instance.account_id}] 登录成功")
+        else:
+            logger.warning(f"[{instance.account_id}] 登录超时")
+    except Exception as e:
+        logger.error(f"[{instance.account_id}] 登录流程异常: {e}")
+
+
 @router.post("/{account_id}/new-chat")
 async def new_chat(account_id: str):
     """新建对话"""
@@ -66,6 +95,7 @@ async def new_chat(account_id: str):
     if not instance._adapter:
         raise HTTPException(status_code=400, detail="实例未启动")
     await instance._adapter.new_conversation()
+    instance._chat_history.clear()
     return {"message": "新对话已创建"}
 
 
@@ -80,7 +110,39 @@ async def chat(account_id: str, req: ChatRequest):
 
     try:
         response = await instance.send_message(req.message)
-        return {"response": response}
+        return {
+            "response": response,
+            "history": [m.model_dump() for m in instance.chat_history[-20:]],
+        }
     except Exception as e:
         logger.error(f"对话失败: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{account_id}/history")
+async def get_history(account_id: str, limit: int = 50):
+    """获取对话历史"""
+    instance = browser_pool.get(account_id)
+    if not instance:
+        raise HTTPException(status_code=404, detail="实例不存在")
+    return [m.model_dump() for m in instance.chat_history[-limit:]]
+
+
+@router.delete("/{account_id}/history")
+async def clear_history(account_id: str):
+    """清空对话历史"""
+    instance = browser_pool.get(account_id)
+    if not instance:
+        raise HTTPException(status_code=404, detail="实例不存在")
+    instance._chat_history.clear()
+    return {"message": "已清空"}
+
+
+@router.post("/{account_id}/check")
+async def check_health(account_id: str):
+    """手动触发健康检查"""
+    instance = browser_pool.get(account_id)
+    if not instance:
+        raise HTTPException(status_code=404, detail="实例不存在")
+    status = await instance.check_health()
+    return {"status": status.value}

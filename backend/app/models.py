@@ -1,4 +1,4 @@
-"""Pydantic 数据模型"""
+"""Pydantic 数据模型 — Phase 2 增强版"""
 
 from __future__ import annotations
 
@@ -66,6 +66,23 @@ class InstanceState(BaseModel):
     screenshot_url: Optional[str] = None
 
 
+# ── 对话 ──────────────────────────────────────────────
+
+class ChatMessage(BaseModel):
+    role: str  # "user" | "assistant" | "system"
+    content: str
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ChatRequest(BaseModel):
+    message: str
+
+
+class ChatResponse(BaseModel):
+    response: str
+    history: list[ChatMessage] = Field(default_factory=list)
+
+
 # ── 工作流 ────────────────────────────────────────────
 
 class WorkflowStep(BaseModel):
@@ -88,20 +105,17 @@ class Workflow(WorkflowCreate):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
-# ── 对话 ──────────────────────────────────────────────
-
-class ChatMessage(BaseModel):
-    role: str  # "user" | "assistant" | "system"
-    content: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
-
-
-class ChatRequest(BaseModel):
-    message: str
-
-
 # ── WebSocket 消息 ────────────────────────────────────
 
 class WSMessage(BaseModel):
-    type: str  # "screenshot" | "status" | "chat" | "log"
+    type: str  # "screenshot" | "status" | "chat" | "chat_chunk" | "log"
     data: dict
+
+
+# ── 事件通知 ──────────────────────────────────────────
+
+class InstanceEvent(BaseModel):
+    event_type: str  # "status_change" | "chat" | "chat_chunk" | "error"
+    account_id: str
+    data: dict
+    timestamp: datetime = Field(default_factory=datetime.utcnow)

@@ -1,14 +1,15 @@
-"""单个 Camoufox 浏览器实例封装"""
+"""单个 Camoufox 浏览器实例封装 — Phase 2 增强版"""
 
 import asyncio
 import time
-from typing import Optional
+from typing import Optional, Callable
 
 from loguru import logger
 
 from app.browser.adapters.base import BaseAdapter
 from app.browser.adapters.registry import AdapterRegistry
-from app.models import InstanceStatus, InstanceState
+from app.models import InstanceStatus, InstanceState, ChatMessage
+from datetime import datetime
 
 
 class BrowserInstance:
@@ -32,7 +33,10 @@ class BrowserInstance:
         self._start_time: float = 0
         self._last_error: Optional[str] = None
         self._screenshot_task: Optional[asyncio.Task] = None
+        self._health_task: Optional[asyncio.Task] = None
         self._latest_screenshot: Optional[bytes] = None
+        self._chat_history: list[ChatMessage] = []
+        self._event_callbacks: list[Callable] = []
 
     @property
     def status(self) -> InstanceStatus:
@@ -57,6 +61,36 @@ class BrowserInstance:
     def latest_screenshot(self) -> Optional[bytes]:
         return self._latest_screenshot
 
+    @property
+    def chat_history(self) -> list[ChatMessage]:
+        return self._chat_history
+
+    def on_event(self, callback: Callable):
+        """注册事件回调"""
+        self._event_callbacks.append(callback)
+
+    def _emit_event(self, event_type: str, data: dict):
+        """触发事件"""
+        for cb in self._event_callbacks:
+            try:
+                cb(event_type, data)
+            except Exception as e:
+                logger.warning(f"事件回调异常: {e}")
+
+    def _set_status(self, new_status: InstanceStatus, error: Optional[str] = None):
+        """更新状态并触发事件"""
+        old_status = self._status
+        if old_status != new_status:
+            self._status = new_status
+            self._last_error = error
+            logger.info(f"[{self.account_id}] 状态变化: {old_status.value} -> {new_status.value}")
+            self._emit_event("status_change", {
+                "account_id": self.account_id,
+                "old_status": old_status.value,
+                "new_status": new_status.value,
+                "error": error,
+            })
+
     def to_state(self) -> InstanceState:
         return InstanceState(
             account_id=self.account_id,
@@ -71,19 +105,17 @@ class BrowserInstance:
     async def start(self):
         """启动浏览器实例"""
         try:
-            self._status = InstanceStatus.STARTING
+            self._set_status(InstanceStatus.STARTING)
             logger.info(f"[{self.account_id}] 启动浏览器...")
 
-            # 动态导入 camoufox（避免未安装时阻塞其他功能）
+            # 动态导入 camoufox
             try:
                 from camoufox.async_api import AsyncCamoufox
             except ImportError:
-                logger.error("camoufox 未安装，使用 Playwright 作为 fallback")
+                logger.warning("camoufox 未安装，使用 Playwright 作为 fallback")
                 from playwright.async_api import async_playwright
                 pw = await async_playwright().start()
-                launch_args = {
-                    "headless": self.headless,
-                }
+                launch_args = {"headless": self.headless}
                 if self.proxy:
                     launch_args["proxy"] = {"server": self.proxy}
                 self._browser = await pw.firefox.launch(**launch_args)
@@ -109,33 +141,41 @@ class BrowserInstance:
             self._adapter = adapter_cls(self._page)
             await self._adapter.init()
 
-            self._status = InstanceStatus.ONLINE
+            # 检查登录态
+            logged_in = await self._adapter.ensure_logged_in()
+            if logged_in:
+                self._set_status(InstanceStatus.ONLINE)
+            else:
+                self._set_status(InstanceStatus.LOGGED_OUT)
+                logger.info(f"[{self.account_id}] 需要登录，等待用户操作...")
+
             self._start_time = time.time()
-            self._last_error = None
             logger.info(f"[{self.account_id}] 浏览器启动成功")
 
             # 启动截图循环
             self._screenshot_task = asyncio.create_task(self._screenshot_loop())
+            # 启动健康检查
+            self._health_task = asyncio.create_task(self._health_loop())
 
         except Exception as e:
-            self._status = InstanceStatus.ERROR
-            self._last_error = str(e)
+            self._set_status(InstanceStatus.ERROR, str(e))
             logger.error(f"[{self.account_id}] 启动失败: {e}")
             raise
 
     async def stop(self):
         """停止浏览器实例"""
         logger.info(f"[{self.account_id}] 停止浏览器...")
-        if self._screenshot_task:
-            self._screenshot_task.cancel()
-            try:
-                await self._screenshot_task
-            except asyncio.CancelledError:
-                pass
+
+        for task in [self._screenshot_task, self._health_task]:
+            if task:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
 
         try:
             if self._browser:
-                # Playwright browser or Camoufox both have .close()
                 await self._browser.close()
         except Exception as e:
             logger.warning(f"[{self.account_id}] 关闭浏览器时出错: {e}")
@@ -144,12 +184,50 @@ class BrowserInstance:
         self._context = None
         self._page = None
         self._adapter = None
-        self._status = InstanceStatus.OFFLINE
+        self._set_status(InstanceStatus.OFFLINE)
         self._start_time = 0
         logger.info(f"[{self.account_id}] 浏览器已停止")
 
+    async def wait_for_login(self, timeout: int = 300000) -> bool:
+        """等待用户完成登录"""
+        if not self._adapter:
+            raise RuntimeError("实例未启动")
+
+        success = await self._adapter.wait_for_login(timeout=timeout)
+        if success:
+            self._set_status(InstanceStatus.ONLINE)
+        return success
+
+    async def send_message(self, text: str) -> str:
+        """发送消息并获取回复"""
+        if not self._adapter:
+            raise RuntimeError("实例未启动")
+
+        # 记录用户消息
+        self._chat_history.append(ChatMessage(role="user", content=text))
+        self._emit_event("chat", {"role": "user", "content": text})
+
+        # 流式收集回复
+        chunks = []
+        def on_chunk(chunk: str):
+            chunks.append(chunk)
+            self._emit_event("chat_chunk", {"chunk": chunk})
+
+        try:
+            response = await self._adapter.send_and_collect(text, on_chunk=on_chunk)
+
+            # 记录助手回复
+            self._chat_history.append(ChatMessage(role="assistant", content=response))
+            self._emit_event("chat", {"role": "assistant", "content": response})
+            return response
+        except Exception as e:
+            error_msg = f"消息发送失败: {e}"
+            self._chat_history.append(ChatMessage(role="system", content=error_msg))
+            self._emit_event("chat", {"role": "system", "content": error_msg})
+            raise
+
     async def _screenshot_loop(self):
-        """截图循环 — 每秒截一帧"""
+        """截图循环"""
         while True:
             try:
                 if self._page and self._adapter:
@@ -161,24 +239,39 @@ class BrowserInstance:
                 logger.warning(f"[{self.account_id}] 截图失败: {e}")
                 await asyncio.sleep(2.0)
 
-    async def send_message(self, text: str) -> str:
-        """发送消息并获取回复"""
-        if not self._adapter:
-            raise RuntimeError("实例未启动")
-        await self._adapter.send_message(text)
-        return await self._adapter.collect_response()
+    async def _health_loop(self):
+        """健康检查循环（每 15 秒）"""
+        while True:
+            try:
+                await asyncio.sleep(15)
+                if not self._adapter or not self._page:
+                    break
+                new_status = await self._adapter.check_status()
+                if new_status != self._status:
+                    self._set_status(new_status)
+                    # 自动恢复逻辑
+                    if new_status == InstanceStatus.LOGGED_OUT:
+                        logger.warning(f"[{self.account_id}] 登录态丢失，等待重新登录...")
+                    elif new_status == InstanceStatus.CAPTCHA:
+                        logger.warning(f"[{self.account_id}] 触发验证码，需要人工处理")
+                    elif new_status == InstanceStatus.RATE_LIMITED:
+                        logger.warning(f"[{self.account_id}] 被限流，等待恢复...")
+                        await asyncio.sleep(60)  # 限流后等 60 秒
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"[{self.account_id}] 健康检查异常: {e}")
+                await asyncio.sleep(10)
 
     async def check_health(self) -> InstanceStatus:
-        """健康检查"""
+        """手动触发健康检查"""
         if not self._adapter or not self._page:
             return InstanceStatus.OFFLINE
         try:
             new_status = await self._adapter.check_status()
             if new_status != self._status:
-                logger.info(f"[{self.account_id}] 状态变化: {self._status} -> {new_status}")
-                self._status = new_status
+                self._set_status(new_status)
             return self._status
         except Exception as e:
-            self._status = InstanceStatus.ERROR
-            self._last_error = str(e)
+            self._set_status(InstanceStatus.ERROR, str(e))
             return self._status
