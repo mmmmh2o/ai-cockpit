@@ -1,4 +1,4 @@
-"""FastAPI 主入口 — Phase 4"""
+"""FastAPI 主入口 — Phase 5 完整版"""
 
 import sys
 from contextlib import asynccontextmanager
@@ -11,14 +11,9 @@ from loguru import logger
 
 from app.api import accounts, instances, workflows, ws
 from app.browser.pool import browser_pool
+from app.browser.adapters.registry import AdapterRegistry, auto_discover
 from app.config import settings
 from app.database import init_db
-
-# 导入适配器（触发注册）
-import app.browser.adapters.chatgpt  # noqa: F401
-import app.browser.adapters.deepseek  # noqa: F401
-import app.browser.adapters.gemini  # noqa: F401
-import app.browser.adapters.doubao  # noqa: F401
 
 # 配置 loguru
 logger.remove()
@@ -39,10 +34,10 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 AI Cockpit 启动中...")
     logger.info(f"   地址: http://{settings.host}:{settings.port}")
     logger.info(f"   最大并发: {settings.max_concurrent}")
-    logger.info(f"   截图FPS: {settings.screenshot_fps}")
     logger.info("=" * 50)
 
     await init_db()
+    auto_discover()
     await browser_pool.start_health_check()
 
     logger.info("✅ 服务就绪")
@@ -57,7 +52,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="AI Cockpit",
     description="多平台网页 AI 协同指挥台",
-    version="0.2.0",
+    version="0.3.0",
     lifespan=lifespan,
 )
 
@@ -86,6 +81,7 @@ async def health():
         "instances": len(instances_list),
         "online": sum(1 for i in instances_list if i.status.value in ("online", "busy")),
         "max_concurrent": settings.max_concurrent,
+        "adapters": AdapterRegistry.list_platforms(),
     }
 
 
@@ -101,7 +97,21 @@ async def stats():
             "offline": sum(1 for i in instances_list if i.status.value == "offline"),
             "error": sum(1 for i in instances_list if i.status.value == "error"),
         },
+        "adapters": AdapterRegistry.list_adapters(),
     }
+
+
+@app.get("/api/adapters")
+async def list_adapters():
+    """列出所有适配器"""
+    return AdapterRegistry.list_adapters()
+
+
+@app.post("/api/adapters/reload")
+async def reload_adapters():
+    """热加载适配器"""
+    AdapterRegistry.reload_all()
+    return {"message": "已重载", "platforms": AdapterRegistry.list_platforms()}
 
 
 # 生产环境托管前端静态文件

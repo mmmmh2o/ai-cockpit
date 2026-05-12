@@ -16,6 +16,7 @@ class Platform(str, Enum):
     DEEPSEEK = "deepseek"
     GEMINI = "gemini"
     DOUBAO = "doubao"
+    LMARENA = "lmarena"
 
 
 class InstanceStatus(str, Enum):

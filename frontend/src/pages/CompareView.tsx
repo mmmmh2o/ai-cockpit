@@ -19,6 +19,7 @@ const platformColors: Record<string, string> = {
   deepseek: 'border-blue-500 bg-blue-500/5',
   gemini: 'border-purple-500 bg-purple-500/5',
   doubao: 'border-orange-500 bg-orange-500/5',
+  lmarena: 'border-cyan-500 bg-cyan-500/5',
 }
 
 const platformLabels: Record<string, string> = {
@@ -26,6 +27,7 @@ const platformLabels: Record<string, string> = {
   deepseek: 'DeepSeek',
   gemini: 'Gemini',
   doubao: '豆包',
+  lmarena: 'LMArena',
 }
 
 export default function CompareView() {

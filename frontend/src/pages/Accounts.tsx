@@ -16,6 +16,7 @@ const platformIcons: Record<string, string> = {
   deepseek: '🐋',
   gemini: '💎',
   doubao: '🫘',
+  lmarena: '🏟️',
 }
 
 const statusColors: Record<string, string> = {
@@ -119,6 +120,7 @@ export default function Accounts() {
                 <option value="deepseek">🐋 DeepSeek</option>
                 <option value="gemini">💎 Gemini</option>
                 <option value="doubao">🫘 豆包</option>
+                <option value="lmarena">🏟️ LMArena</option>
               </select>
             </div>
             <div className="flex-1">
