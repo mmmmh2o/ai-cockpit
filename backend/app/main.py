@@ -1,5 +1,6 @@
-"""FastAPI 主入口"""
+"""FastAPI 主入口 — Phase 4"""
 
+import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -19,15 +20,34 @@ import app.browser.adapters.deepseek  # noqa: F401
 import app.browser.adapters.gemini  # noqa: F401
 import app.browser.adapters.doubao  # noqa: F401
 
+# 配置 loguru
+logger.remove()
+logger.add(sys.stderr, level="INFO", format="<green>{time:HH:mm:ss}</green> | <level>{level:7s}</level> | <cyan>{name}</cyan> - {message}")
+logger.add(
+    str(settings.logs_dir / "cockpit-{time:YYYY-MM-DD}.log"),
+    rotation="1 day",
+    retention="7 days",
+    level="DEBUG",
+    format="{time:YYYY-MM-DD HH:mm:ss} | {level:7s} | {name}:{function}:{line} - {message}",
+)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理"""
+    logger.info("=" * 50)
     logger.info("🚀 AI Cockpit 启动中...")
+    logger.info(f"   地址: http://{settings.host}:{settings.port}")
+    logger.info(f"   最大并发: {settings.max_concurrent}")
+    logger.info(f"   截图FPS: {settings.screenshot_fps}")
+    logger.info("=" * 50)
+
     await init_db()
     await browser_pool.start_health_check()
-    logger.info(f"✅ 服务就绪: http://{settings.host}:{settings.port}")
+
+    logger.info("✅ 服务就绪")
     yield
+
     logger.info("🛑 AI Cockpit 关闭中...")
     await browser_pool.stop_health_check()
     await browser_pool.stop_all()
@@ -37,14 +57,14 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="AI Cockpit",
     description="多平台网页 AI 协同指挥台",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -60,10 +80,27 @@ app.include_router(ws.router)
 @app.get("/health")
 async def health():
     """健康检查"""
+    instances_list = browser_pool.list_all()
     return {
         "status": "ok",
-        "instances": len(browser_pool.list_all()),
+        "instances": len(instances_list),
+        "online": sum(1 for i in instances_list if i.status.value in ("online", "busy")),
         "max_concurrent": settings.max_concurrent,
+    }
+
+
+@app.get("/api/stats")
+async def stats():
+    """系统统计"""
+    instances_list = browser_pool.list_all()
+    return {
+        "instances": {
+            "total": len(instances_list),
+            "online": sum(1 for i in instances_list if i.status.value == "online"),
+            "busy": sum(1 for i in instances_list if i.status.value == "busy"),
+            "offline": sum(1 for i in instances_list if i.status.value == "offline"),
+            "error": sum(1 for i in instances_list if i.status.value == "error"),
+        },
     }
 
 

@@ -1,4 +1,4 @@
-"""WebSocket 端点 — Phase 2 增强版"""
+"""WebSocket 端点 — Phase 4 增强版 (全局事件总线)"""
 
 import asyncio
 import base64
@@ -9,6 +9,7 @@ from loguru import logger
 
 from app.browser.pool import browser_pool
 from app.config import settings
+from app.utils.event_bus import event_bus
 
 router = APIRouter()
 
@@ -46,7 +47,7 @@ async def ws_screen(websocket: WebSocket, account_id: str):
 
 @router.websocket("/ws/instances/{account_id}/chat")
 async def ws_chat(websocket: WebSocket, account_id: str):
-    """实时对话流 WebSocket — 支持流式回复"""
+    """实时对话流 WebSocket"""
     await websocket.accept()
     logger.info(f"[WS] 对话流连接: {account_id}")
 
@@ -56,29 +57,19 @@ async def ws_chat(websocket: WebSocket, account_id: str):
         await websocket.close()
         return
 
-    # 注册事件回调，转发到 WebSocket
-    async def on_event(event_type: str, data: dict):
-        try:
-            await websocket.send_json({"type": event_type, "data": data})
-        except Exception:
-            pass
-
-    # 用同步包装器注册
     def sync_on_event(event_type: str, data: dict):
-        asyncio.create_task(on_event(event_type, data))
+        asyncio.create_task(_safe_send(websocket, event_type, data))
 
     instance.on_event(sync_on_event)
 
     try:
         while True:
-            # 接收客户端消息
             raw = await websocket.receive_text()
             try:
                 msg = json.loads(raw)
                 if msg.get("type") == "chat":
                     text = msg.get("message", "")
                     if text:
-                        # 异步发送消息，结果通过事件回调推回
                         asyncio.create_task(_handle_chat(instance, text))
                 elif msg.get("type") == "new_chat":
                     if instance._adapter:
@@ -93,8 +84,14 @@ async def ws_chat(websocket: WebSocket, account_id: str):
         logger.error(f"[WS] 对话流错误: {e}")
 
 
+async def _safe_send(ws: WebSocket, event_type: str, data: dict):
+    try:
+        await ws.send_json({"type": event_type, "data": data})
+    except Exception:
+        pass
+
+
 async def _handle_chat(instance, text: str):
-    """处理对话消息"""
     try:
         await instance.send_message(text)
     except Exception as e:
@@ -103,19 +100,22 @@ async def _handle_chat(instance, text: str):
 
 @router.websocket("/ws/global")
 async def ws_global(websocket: WebSocket):
-    """全局状态推送 WebSocket"""
-    await websocket.accept()
+    """全局状态推送 WebSocket — 使用事件总线"""
+    await event_bus.connect(websocket, "global")
     logger.info("[WS] 全局状态连接")
 
     try:
         while True:
+            # 定期推送实例状态
             states = [s.model_dump() for s in browser_pool.list_all()]
             await websocket.send_json({
                 "type": "status",
                 "data": {"instances": states}
             })
-            await asyncio.sleep(2.0)
+            await asyncio.sleep(3.0)
     except WebSocketDisconnect:
+        event_bus.disconnect(websocket, "global")
         logger.info("[WS] 全局状态断开")
     except Exception as e:
+        event_bus.disconnect(websocket, "global")
         logger.error(f"[WS] 全局状态错误: {e}")
