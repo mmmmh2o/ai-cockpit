@@ -1,0 +1,80 @@
+name: Build Windows EXE
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Python 环境 ──
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # ── Node.js 环境 ──
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # ── 构建前端 ──
+      - name: Build Frontend
+        run: |
+          cd frontend
+          npm ci
+          npm run build
+        shell: bash
+
+      # ── 安装后端依赖 ──
+      - name: Install Backend Dependencies
+        run: |
+          cd backend
+          pip install pyinstaller
+          pip install -e .
+
+      # ── PyInstaller 打包 ──
+      - name: Package with PyInstaller
+        run: |
+          pyinstaller build/ai-cockpit.spec --noconfirm --distpath dist --workpath build/tmp
+        shell: bash
+
+      # ── 整理产物 ──
+      - name: Prepare Release
+        run: |
+          # 复制前端到 static
+          mkdir -p dist/ai-cockpit/static
+          cp -r frontend/dist/* dist/ai-cockpit/static/
+          # 复制配置文件
+          cp config.yaml dist/ai-cockpit/
+          cp README.md dist/ai-cockpit/
+        shell: bash
+
+      # ── 打包成 zip ──
+      - name: Create ZIP
+        run: |
+          cd dist
+          Compress-Archive -Path ai-cockpit -DestinationPath ai-cockpit-windows-x64.zip
+        shell: pwsh
+
+      # ── 上传 Artifact ──
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-cockpit-windows-x64
+          path: dist/ai-cockpit-windows-x64.zip
+          retention-days: 30
+
+      # ── 创建 Release（仅 tag 触发）──
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/ai-cockpit-windows-x64.zip
+          generate_release_notes: true

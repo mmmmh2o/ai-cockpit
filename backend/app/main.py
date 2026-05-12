@@ -1,5 +1,6 @@
 """FastAPI 主入口 — Phase 5 完整版"""
 
+import os
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -115,6 +116,10 @@ async def reload_adapters():
 
 
 # 生产环境托管前端静态文件
-frontend_dist = Path(__file__).parent.parent.parent / "frontend" / "dist"
-if frontend_dist.exists():
-    app.mount("/", StaticFiles(directory=str(frontend_dist), html=True), name="frontend")
+static_dir = os.environ.get("COCKPIT_STATIC_DIR")
+if static_dir and Path(static_dir).exists():
+    app.mount("/", StaticFiles(directory=static_dir, html=True), name="frontend")
+else:
+    frontend_dist = Path(__file__).parent.parent.parent / "frontend" / "dist"
+    if frontend_dist.exists():
+        app.mount("/", StaticFiles(directory=str(frontend_dist), html=True), name="frontend")
