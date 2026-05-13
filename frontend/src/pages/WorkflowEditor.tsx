@@ -358,7 +358,7 @@ export default function WorkflowEditor() {
               <div className="p-3 space-y-2 max-h-60 overflow-auto">
                 {((activeRun as Record<string, unknown>).steps as Array<Record<string, unknown>>)?.map((step) => (
                   <div key={step.id as string} className="flex items-start gap-2 text-xs">
-                    <span>{(step.status === 'done' ? '✅' : step.status === 'failed' ? '❌' : step.status === 'running' ? '🔄' : '⏳') as React.ReactNode}</span>
+                    <span>{((step as {status: string}).status === 'done' ? '✅' : (step as {status: string}).status === 'failed' ? '❌' : (step as {status: string}).status === 'running' ? '🔄' : '⏳')}</span>
                     <div>
                       <span className="font-medium">{step.name as string}</span>
                       {step.output && <div className="text-gray-500 mt-0.5 max-h-16 overflow-hidden">{(step.output as string).slice(0, 100)}...</div>}
