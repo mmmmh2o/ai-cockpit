@@ -15,7 +15,7 @@ import ReactFlow, {
   NodeProps,
 } from 'reactflow'
 import 'reactflow/dist/style.css'
-import { apiGet, apiPost, apiDelete } from '../lib/api'
+import { apiGet, apiPost } from '../lib/api'
 import { Save, Play, Plus, Trash2, Zap, MessageCircle, GitBranch, Swords, User } from 'lucide-react'
 
 // ── 节点类型定义 ──────────────────────────────────
