@@ -9,11 +9,6 @@ interface Instance {
   status: string
 }
 
-interface ChatMsg {
-  role: string
-  content: string
-}
-
 const platformColors: Record<string, string> = {
   chatgpt: 'border-green-500 bg-green-500/5',
   deepseek: 'border-blue-500 bg-blue-500/5',
@@ -41,8 +36,6 @@ export default function CompareView() {
   useEffect(() => {
     apiGet<Instance[]>('/api/instances').then(setInstances)
   }, [])
-
-  const onlineInstances = instances.filter(i => i.status === 'online')
 
   const toggleSelect = (id: string) => {
     setSelected(prev =>
