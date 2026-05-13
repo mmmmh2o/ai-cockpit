@@ -361,7 +361,7 @@ export default function WorkflowEditor() {
                     <span>{((step as {status: string}).status === 'done' ? '✅' : (step as {status: string}).status === 'failed' ? '❌' : (step as {status: string}).status === 'running' ? '🔄' : '⏳')}</span>
                     <div>
                       <span className="font-medium">{step.name as string}</span>
-                      {step.output && <div className="text-gray-500 mt-0.5 max-h-16 overflow-hidden">{(step.output as string).slice(0, 100)}...</div>}
+                      {(step.output as string) && <div className="text-gray-500 mt-0.5 max-h-16 overflow-hidden">{(step.output as string).slice(0, 100)}...</div>}
                     </div>
                   </div>
                 ))}
