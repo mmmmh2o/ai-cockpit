@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, useEffect } from 'react'
+import { useCallback, useState, useEffect } from 'react'
 import ReactFlow, {
   Node,
   Edge,
@@ -16,7 +16,7 @@ import ReactFlow, {
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 import { apiGet, apiPost, apiDelete } from '../lib/api'
-import { Save, Play, Plus, Trash2, Zap, MessageCircle, GitBranch, Swords, User, Clock, Variable } from 'lucide-react'
+import { Save, Play, Plus, Trash2, Zap, MessageCircle, GitBranch, Swords, User } from 'lucide-react'
 
 // ── 节点类型定义 ──────────────────────────────────
 
@@ -231,17 +231,6 @@ export default function WorkflowEditor() {
     return () => clearInterval(poll)
   }, [activeRunId])
 
-  // 删除工作流
-  const handleDelete = async (id: string) => {
-    await apiDelete(`/api/workflows/${id}`)
-    if (selectedWf?.id === id) {
-      setSelectedWf(null)
-      setNodes([])
-      setEdges([])
-    }
-    refresh()
-  }
-
   const selectedNodeData = nodes.find(n => n.id === selectedNode)?.data as StepData | undefined
   const onlineInstances = instances.filter(i => i.status === 'online')
 
@@ -369,7 +358,7 @@ export default function WorkflowEditor() {
               <div className="p-3 space-y-2 max-h-60 overflow-auto">
                 {((activeRun as Record<string, unknown>).steps as Array<Record<string, unknown>>)?.map((step) => (
                   <div key={step.id as string} className="flex items-start gap-2 text-xs">
-                    <span>{step.status === 'done' ? '✅' : step.status === 'failed' ? '❌' : step.status === 'running' ? '🔄' : '⏳'}</span>
+                    <span>{(step.status === 'done' ? '✅' : step.status === 'failed' ? '❌' : step.status === 'running' ? '🔄' : '⏳') as React.ReactNode}</span>
                     <div>
                       <span className="font-medium">{step.name as string}</span>
                       {step.output && <div className="text-gray-500 mt-0.5 max-h-16 overflow-hidden">{(step.output as string).slice(0, 100)}...</div>}
