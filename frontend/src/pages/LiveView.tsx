@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom'
 import { useInstanceStore } from '../stores/instanceStore'
 import { useWebSocket } from '../hooks/useWebSocket'
 import { apiGet, apiPost } from '../lib/api'
-import { Send, RefreshCw, MessageSquare, LogIn, Trash2, Plus } from 'lucide-react'
+import { Send, MessageSquare, LogIn, Trash2, Plus } from 'lucide-react'
 
 interface ChatMsg {
   role: string
