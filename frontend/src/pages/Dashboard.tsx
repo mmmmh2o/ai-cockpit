@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { apiGet } from '../lib/api'
 import { useInstanceStore } from '../stores/instanceStore'
 import { useWebSocket } from '../hooks/useWebSocket'
-import { Play, Square, Wifi, WifiOff, Zap, GitBranch, Activity } from 'lucide-react'
+import { Play, Wifi, WifiOff, Zap, Activity } from 'lucide-react'
 
 interface HealthStatus {
   status: string
@@ -66,13 +66,6 @@ export default function Dashboard() {
     failed: 'text-cockpit-danger',
     paused: 'text-cockpit-warning',
     aborted: 'text-gray-500',
-  }
-
-  const platformIcons: Record<string, string> = {
-    chatgpt: '🤖',
-    deepseek: '🐋',
-    gemini: '💎',
-    doubao: '🫘',
   }
 
   return (
